@@ -254,7 +254,7 @@ def buyItem(item, market_hash_name):
     }
     body = {
         'sessionid': buyBotClient.sessionID,
-        'currency': 6,
+        'currency': int(cur),
         'subtotal': item['subtotal'],
         'fee': item['fee'],
         'total': item['total'],
