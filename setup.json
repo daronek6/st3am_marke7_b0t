@@ -1,18 +1,39 @@
-{"desc1": "Credentials for account that is going to buy items",
-"buybot": {"username": "", "password": ""},
-"desc2": "Credentials for account that is going to check floats",
-"floatbot": {"username": "", "password": ""},
-"items": [
-{"name": "Nova | Mandrel (Factory New)", "maxtotal": 14},
-{"name": "UMP-45 | Facility Dark (Factory New)", "maxtotal": 14},
-{"name": "P250 | Facility Draft (Factory New)", "maxtotal": 14},
-{"name": "PP-Bizon | Facility Sketch (Factory New)", "maxtotal": 14}
-],
-"maxfloat": 1.0,
-"itemstobuy": 1,
-"mintimeout": 240.0,
-"maxtimeout": 360.0,
-"cur_text":"zł",
-"country":"PL",
-"lang":"english",
-"cur":"6"}
+{
+    "desc1": "Credentials for account that is going to buy items",
+    "buybot": {
+        "username": "",
+        "password": ""
+    },
+    "desc2": "Credentials for account that is going to check floats",
+    "floatbot": {
+        "username": "",
+        "password": ""
+    },
+    "items": [
+        {
+            "name": "Nova | Mandrel (Factory New)",
+            "maxtotal": 12
+        },
+        {
+            "name": "UMP-45 | Facility Dark (Factory New)",
+            "maxtotal": 12
+        },
+        {
+            "name": "P250 | Facility Draft (Factory New)",
+            "maxtotal": 12
+        },
+        {
+            "name": "PP-Bizon | Facility Sketch (Factory New)",
+            "maxtotal": 12
+        }
+    ],
+    "maxfloat": 1.0,
+    "itemstobuy": 5,
+    "mintimeout": 240.0,
+    "maxtimeout": 360.0,
+    "cur_text": "zł",
+    "country": "PL",
+    "lang": "english",
+    "cur": "6",
+    "items_per_request":10
+}

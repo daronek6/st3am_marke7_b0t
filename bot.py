@@ -316,6 +316,7 @@ cur_text = setup_data['cur_text']
 country = setup_data['country']
 lang = setup_data['lang']
 cur = setup_data['cur']
+count = setup_data['items_per_request']
 for item in setup_data['items']:
     market_hash_names.append(item['name'])
     totals.append(item['maxtotal'])
@@ -332,7 +333,7 @@ lock = threading.Lock()
 checked_ids = []
 
                                                     # market_hash_name, start, count, maxTotal, maxFloat, itemsToBuy
-bot_t = threading.Thread(name='Bot_t', target=bot, args=(market_hash_names, 0, 10, totals, maxFloat, itemsToBuy))
+bot_t = threading.Thread(name='Bot_t', target=bot, args=(market_hash_names, 0, count, totals, maxFloat, itemsToBuy))
 
 @floatBotClient.on('logged_on')
 def start_csgo():
