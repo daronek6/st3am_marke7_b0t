@@ -35,5 +35,6 @@
     "country": "PL",
     "lang": "english",
     "cur": "6",
-    "items_per_request":10
+    "items_per_request": 10,
+    "float_response_time_limit": 1.5
 }

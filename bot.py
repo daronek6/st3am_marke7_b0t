@@ -168,7 +168,7 @@ def testPrice(item, maxTotal):
 
 def testFloat(item, maxFloat):
     global currentItemFloat
-    max_retries = int(3.0/0.2)
+    max_retries = int(float_response_time_limit/0.2)
     retries = 0
     currentItemFloat = 1.0
     lock.acquire()
@@ -317,6 +317,7 @@ country = setup_data['country']
 lang = setup_data['lang']
 cur = setup_data['cur']
 count = setup_data['items_per_request']
+float_response_time_limit = setup_data['float_response_time_limit']
 for item in setup_data['items']:
     market_hash_names.append(item['name'])
     totals.append(item['maxtotal'])
