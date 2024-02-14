@@ -27,14 +27,19 @@
             "maxtotal": 12
         }
     ],
-    "maxfloat": 1.0,
-    "itemstobuy": 5,
-    "mintimeout": 240.0,
-    "maxtimeout": 360.0,
-    "cur_text": "zł",
+    "desiredMaxFloat": 0.03,
+    "itemsToBuy": 5,
+    "minTimeout": 300.0,
+    "maxTimeout": 420.0,
+    "curText": "zł",
     "country": "PL",
     "lang": "english",
     "cur": "6",
-    "items_per_request": 10,
-    "float_response_time_limit": 1.5
+    "itemsPerRequest": 20,
+    "desc3": "time in secounds for bot to wait for float response, if it doesn't recive response in time it sets item float to 1.0",
+    "floatResponseTimeLimit": 1.2,
+    "desc4": "current max float is calculated automatically based on desiredMaxFloat and itemsBought (avg), if you want to buy more than 1 item reset items bought to 0",
+    "currentMaxFloat": 0,
+    "currentAvgFloat": 0,
+    "itemsBought": 0
 }

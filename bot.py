@@ -6,7 +6,6 @@ import urllib.parse
 import struct
 import requests
 import re
-from queue import Queue 
 import threading
 import time
 from datetime import datetime
@@ -63,14 +62,14 @@ def getPrices(res_json):
 def getPricesHtml(res_json):
     prices = []
     html = res_json['results_html']
-    re_list = re.findall(f"([0-9]+,[0-9]+{cur_text})", html)
+    re_list = re.findall(f"([0-9]+,[0-9]+{curText})", html)
     total = 0
     subtotal = 0
     fee = 0
     i = 0
     tmpStr = ''
     for elm in re_list:
-        tmpStr = elm.replace(cur_text, '')
+        tmpStr = elm.replace(curText, '')
         tmpStr = tmpStr.replace(',', '.')
 
         if i == 0:
@@ -86,32 +85,40 @@ def getPricesHtml(res_json):
     return prices
 
 def getItemListings(market_hash_name, start, count):
-    url = f"http://steamcommunity.com/market/listings/730/{encodeURI(market_hash_name)}/render/?query=&start={start}&count={count}&country={country}&language={lang}&currency={cur}"
-    headers = {
-        'Accept': 'text/javascript, text/html, application/xml, text/xml, */*',
-        'Accept-Encoding': 'gzip, deflate, br'
-    }
-    res = requests.get(url=url, headers=headers) 
-    body = res.json()
-    items = []
-    new_items = []
-    if body == None:
-        print('Probably too many requests :(')
-        raise Exception('too many requests')
-    elif body['success'] == True:
-        prices = getPrices(body)
-        links = getLinksAndIds(body)
+    retry = 1
+    waitTime = 30
+    currentWaitTime = waitTime
+    while (retry == 1):
+        retry = 0
+        url = f"http://steamcommunity.com/market/listings/730/{encodeURI(market_hash_name)}/render/?query=&start={start}&count={count}&country={country}&language={lang}&currency={cur}"
+        headers = {
+            'Accept': 'text/javascript, text/html, application/xml, text/xml, */*',
+            'Accept-Encoding': 'gzip, deflate, br'
+        }
+        res = requests.get(url=url, headers=headers) 
+        body = res.json()
+        items = []
+        new_items = []
+        if body == None:
+            print('Probably too many requests :(')
+            raise Exception('too many requests')
+        elif body['success'] == True:
+            prices = getPrices(body)
+            links = getLinksAndIds(body)
 
-        for i in range(0, len(prices)):
-            prices[i]['listingid'] = links[i]['listingid']
-            prices[i]['link'] = links[i]['link']
-        items = prices
+            for i in range(0, len(prices)):
+                prices[i]['listingid'] = links[i]['listingid']
+                prices[i]['link'] = links[i]['link']
+            items = prices
 
-        for item in items:
-            if item['listingid'] not in checked_ids:
-                new_items.append(item)
-    else:
-        print('Empty json')
+            for item in items:
+                if item['listingid'] not in checked_ids:
+                    new_items.append(item)
+        else:
+            currentWaitTime = currentWaitTime + waitTime
+            print(f"Empty json, retrying (wait {currentWaitTime}s)")
+            retry = 1
+            time.sleep(currentWaitTime)
     
     return new_items
 
@@ -148,15 +155,22 @@ def getfloat(paintwear):
     skinFloat = struct.unpack('f', buf)[0]
     return skinFloat
 
-def testItems(items, maxTotal, maxFloat):
+def testItems(items, maxTotal):
+    global currentMaxFloat
+    maxFloat = 0
+
     print(f"{len(items)} new item!")
     for item in items:
+        maxFloat = currentMaxFloat
         checked_ids.append(item['listingid'])
         if testPrice(item, maxTotal) == 1:
             print(f"item {item['listingid']} ready to chceck float")
             if testFloat(item, maxFloat) == 1:
-                print(f"item {item['listingid']} ready to buy")
-                itemsToBuyQueue.put(item)
+                print(f"item {item['listingid']}, float: {currentItemFloat} ready to buy")
+                item['float'] = currentItemFloat
+                itemsToBuyStack.append(item)
+                calculateNewAvgFloat(item['float'])
+                calculateCurrentMaxFloat()
         else:
             print(f"item {item['listingid']} too expensive. MaxTotal: {maxTotal}, item total: {item['total']}")
 
@@ -168,75 +182,87 @@ def testPrice(item, maxTotal):
 
 def testFloat(item, maxFloat):
     global currentItemFloat
-    max_retries = int(float_response_time_limit/0.2)
+    sleepTime = 0.1
+    max_retries = int(floatResponseTimeLimit/sleepTime)
     retries = 0
     currentItemFloat = 1.0
     lock.acquire()
     inspectItem(link=item['link'])
     while(lock.locked()):
-        time.sleep(0.2)
+        time.sleep(sleepTime)
         retries += 1
         if retries >= max_retries:
-            lock.release()
+            try:
+                lock.release()
+            except:
+                print('lock already unlocked testFloat()')
     print(f"{threading.current_thread().name} {currentItemFloat}")
     if currentItemFloat <= maxFloat:
         return 1
     else:
         return 0
 
-def bot(market_hash_names, start, count, maxTotals, maxFloat, itemsToBuy):
+def bot(market_hash_names, start, count, maxTotals):
+    global numOfItemsToBuy
     i = 0
     while lock.locked():
         time.sleep(0.1)
     print('Bots ready')
-    while (itemsToBuy > 0):
+    while (numOfItemsToBuy > 0):
 
         market_hash_name = market_hash_names[i]
         maxTotal = maxTotals[i]
-        print(f"item: {market_hash_name}, maxTotal: {maxTotal}")
+        print(f"item: {market_hash_name}, maxTotal: {maxTotal}, currentMaxFloat: {currentMaxFloat}, desiredMaxFloat: {desiredMaxFloat}, currentAvgFloat: {currentAvgFloat}")
         try:
             items = getItemListings(market_hash_name, start, count)
         except Exception as ex:
             print(ex)
             return 0
-        testItems(items, maxTotal, maxFloat)
-        itemsToBuy = tryToBuyItems(itemsToBuy, market_hash_name)
+        testItems(items, maxTotal)
+        tryToBuyItems(market_hash_name)
+        calculateCurrentMaxFloat()
+        updateSetupFile()
         if i == (len(market_hash_names) - 1):
             i = 0
         else:
             i += 1
         bot_timeout = BOT_MIN_TIMEOUT + random.random() * (BOT_MAX_TIMEOUT - BOT_MIN_TIMEOUT)
-        if itemsToBuy > 0:
-            print(f"{threading.current_thread().name} TIMEOUT")
+        if numOfItemsToBuy > 0:
+            print(f"{threading.current_thread().name} TIMEOUT: {bot_timeout}s.")
             time.sleep(bot_timeout)
     print("Bot stopped!")
     return 1
 
-def tryToBuyItems(itemsToBuy, market_hash_name):
-    attempts = itemsToBuyQueue.qsize()
-    print(f"Q size: {attempts}")
-    while (itemsToBuyQueue.empty() == False) and (attempts > 0) and (itemsToBuy > 0):
-        item = itemsToBuyQueue.get()
+def tryToBuyItems(market_hash_name):
+    global numOfItemsToBuy
+    global itemsBought
+    attempts = len(itemsToBuyStack)
+    print(f"Stack size: {attempts}")
+    while (len(itemsToBuyStack) > 0) and (attempts > 0) and (numOfItemsToBuy > 0):
+        item = itemsToBuyStack.pop()
         res = tryToBuyItem(item, market_hash_name)
         if res == 1:
             print(f"Bought: {market_hash_name}: {item}")
             with open('buy_history.txt', 'a+') as file:
-                file.write(f" {market_hash_name};{item['total']};{datetime.now()}\n")
+                file.write(f" {market_hash_name};{item['total']};{item['float']};{datetime.now()}\n")
             
-            itemsToBuy -= 1
-            setup_data['itemstobuy'] = itemsToBuy
-            with open('setup.json', 'w') as file:
-                dump(setup_data, file)
+            numOfItemsToBuy -= 1
+            itemsBought += 1
+            setup_data['itemsToBuy'] = numOfItemsToBuy
+            setup_data['itemsBought'] = itemsBought
+            deleteHistoryOnBuy()
+            updateSetupFile()
         elif res == -1:
+            rollbackCalculations()
             print('item already bought')
         elif res == -2:
+            rollbackCalculations()
             print('No balance left')
-            itemsToBuy = 0
+            numOfItemsToBuy = 0
         else:
+            rollbackCalculations()
             print(f"Error while buying item: {item}")
-            itemsToBuyQueue.put(item)
         attempts -= 1
-    return itemsToBuy
 
 def tryToBuyItem(item, market_hash_name):
     res = buyItem(item, market_hash_name)
@@ -294,38 +320,105 @@ def buyItem(item, market_hash_name):
 
     
 def setupFloatBot(username, password):
-    floatBotClient.cli_login(username=username, password=password)
-    floatBotClient.run_forever()
-
+    loggedIn = 0
+    while(loggedIn == 0):
+        try:
+            floatBotClient.cli_login(username=username, password=password)
+            floatBotClient.run_forever()
+            loggedIn = 1
+        except Exception as ex:
+            print(ex)
+        
 def setupBuyBot(username, password):
-    buyBotClient.cli_login(username=username, password=password)
+    loggedIn = 0
+    while(loggedIn == 0):
+        try:
+            buyBotClient.cli_login(username=username, password=password)
+            loggedIn = 1
+        except Exception as ex:
+            print(ex)
     setupFloatBot(username=setup_data['floatbot']['username'], password=setup_data['floatbot']['password']) 
 
 def relogBuyBot(username, password):
     buyBotClient.cli_login(username=username, password=password)
 
+def calculateCurrentMaxFloat():
+    global itemsInCalculation
+    global desiredMaxFloat
+    global currentAvgFloat
+    global currentMaxFloat
+    prevMaxFloats.append(currentMaxFloat)
+    currentMaxFloat = (itemsInCalculation + 1)*desiredMaxFloat - itemsInCalculation*currentAvgFloat
+    setup_data['currentMaxFloat'] = currentMaxFloat
+    print(f"New - currentMaxFloat: {currentMaxFloat}")
+
+def calculateNewAvgFloat(boughtItemFloat):
+    global itemsInCalculation
+    global currentAvgFloat
+    prevAvgFloats.append(currentAvgFloat)
+    currentAvgFloat = (itemsInCalculation*currentAvgFloat + boughtItemFloat)/(itemsInCalculation + 1)
+    setup_data['currentAvgFloat'] = currentAvgFloat
+    itemsInCalculation = itemsInCalculation + 1
+    print(f"New - itemsInCalculation: {itemsInCalculation}, currentAvgFloat: {currentAvgFloat}")
+
+def rollbackCalculations():
+    global itemsInCalculation
+    global currentMaxFloat
+    global currentAvgFloat
+    print(f"Rollback itemsInCalculation: {itemsInCalculation}, currentMaxFloat: {currentMaxFloat}, currentAvgFloat: {currentAvgFloat}")
+    if len(prevMaxFloats) > 0 and len(prevAvgFloats) > 0:
+        currentMaxFloat = prevMaxFloats.pop()
+        currentAvgFloat = prevAvgFloats.pop()
+        itemsInCalculation = itemsInCalculation - 1
+        setup_data['currentMaxFloat'] = currentMaxFloat
+        setup_data['currentAvgFloat'] = currentAvgFloat
+        print(f"Back to - itemsInCalculation: {itemsInCalculation}, currentMaxFloat: {currentMaxFloat}, currentAvgFloat: {currentAvgFloat}")
+    else:
+        print("0 saved MaxFloats or/and AvgFloats")
+
+def deleteHistoryOnBuy():
+    a = prevMaxFloats.pop()
+    b = prevAvgFloats.pop()
+    print(f"Deleted prevMaxFloat: {a} and prevAvgFloat: {b}")
+
+def setupAvgFloat():
+    if itemsInCalculation == 0:
+        currentAvgFloat = 0
+        setup_data['currentAvgFloat'] = currentAvgFloat
+        print("Setup avgFloat!")
+
+def updateSetupFile():
+    with open('setup.json', 'w') as file:
+        dump(setup_data, file)
+        print("Updated setup file!")
 
 setup_data = ''
 with open('setup.json', 'r') as file:
     setup_data = load(file)
 market_hash_names = []
 totals = []
-maxFloat = setup_data['maxfloat']
-itemsToBuy = setup_data['itemstobuy']
-cur_text = setup_data['cur_text']
+desiredMaxFloat = setup_data['desiredMaxFloat']
+numOfItemsToBuy = setup_data['itemsToBuy']
+curText = setup_data['curText']
 country = setup_data['country']
 lang = setup_data['lang']
 cur = setup_data['cur']
-count = setup_data['items_per_request']
-float_response_time_limit = setup_data['float_response_time_limit']
+itemsPerRequest = setup_data['itemsPerRequest']
+floatResponseTimeLimit = setup_data['floatResponseTimeLimit']
+currentMaxFloat = setup_data['currentMaxFloat']
+currentAvgFloat = setup_data['currentAvgFloat']
+itemsInCalculation = setup_data['itemsBought']
+itemsBought = itemsInCalculation
+prevMaxFloats = []
+prevAvgFloats = []
 for item in setup_data['items']:
     market_hash_names.append(item['name'])
     totals.append(item['maxtotal'])
-BOT_MIN_TIMEOUT = setup_data['mintimeout'] # in sec
-BOT_MAX_TIMEOUT = setup_data['maxtimeout'] # in sec
+BOT_MIN_TIMEOUT = setup_data['minTimeout'] # in sec
+BOT_MAX_TIMEOUT = setup_data['maxTimeout'] # in sec
 
 currentItemFloat = 1.0
-itemsToBuyQueue = Queue()
+itemsToBuyStack = []
 
 floatBotClient = SteamClient()
 buyBotClient = WebAuth(username=setup_data['buybot']['username'])
@@ -333,8 +426,8 @@ csgo = CSGOClient(floatBotClient)
 lock = threading.Lock()
 checked_ids = []
 
-                                                    # market_hash_name, start, count, maxTotal, maxFloat, itemsToBuy
-bot_t = threading.Thread(name='Bot_t', target=bot, args=(market_hash_names, 0, count, totals, maxFloat, itemsToBuy))
+                                                    # market_hash_name, start, count, maxTotal
+bot_t = threading.Thread(name='Bot_t', target=bot, args=(market_hash_names, 0, itemsPerRequest, totals))
 
 @floatBotClient.on('logged_on')
 def start_csgo():
@@ -344,6 +437,9 @@ def start_csgo():
 @csgo.on('ready')
 def gc_ready():
     print('csgo ready')
+    setupAvgFloat()
+    calculateCurrentMaxFloat()
+    updateSetupFile()
     bot_t.start()
     
 @csgo.on('item_data_block')
@@ -355,7 +451,7 @@ def item_data(data):
     try:
         lock.release()
     except:
-        print('already unlocked')
+        print('lock already unlocked item_data()')
 
-
+# Script start
 setupBuyBot(username=setup_data['buybot']['username'], password=setup_data['buybot']['password'])
